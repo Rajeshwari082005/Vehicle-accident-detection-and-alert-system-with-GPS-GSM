@@ -1,0 +1,44 @@
+#include <Wire.h>
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+#include <SoftwareSerial.h>
+
+Adafruit_MPU6050 mpu;
+SoftwareSerial gsm(7,8), gps(3,4);
+const float THRESHOLD = 3.0;
+
+void setup() {
+  Serial.begin(9600);
+  gsm.begin(9600); gps.begin(9600);
+  if(!mpu.begin()){while(1);}
+  Serial.println("Accident Detection Ready");
+}
+
+void loop() {
+  sensors_event_t a,g,t; mpu.getEvent(&a,&g,&t);
+  float total = sqrt(a.acceleration.x*a.acceleration.x + a.acceleration.y*a.acceleration.y + a.acceleration.z*a.acceleration.z);
+
+  if(total>THRESHOLD){
+    Serial.println("Accident Detected!");
+    String lat="", lon="";
+    unsigned long start=millis();
+    while(millis()-start<5000){
+      if(gps.available()){
+        char c=gps.read();
+        if(c=='$'){
+          String nmea=gps.readStringUntil('\n');
+          if(nmea.startsWith("GPGGA")){
+            int i1=nmea.indexOf(',',2), i2=nmea.indexOf(',',i1+1); lat=nmea.substring(i1+1,i2);
+            i1=nmea.indexOf(',',i2+1); i2=nmea.indexOf(',',i1+1); lon=nmea.substring(i1+1,i2);
+            break;
+          }
+        }
+      }
+    }
+    String msg="Accident! Lat="+lat+" Lon="+lon;
+    gsm.println("AT+CMGF=1"); delay(100);
+    gsm.println("AT+CMGS=\"+911234567890\""); delay(100); // replace number
+    gsm.println(msg); delay(100); gsm.write(26); delay(5000);
+  }
+  delay(100);
+}
